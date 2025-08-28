@@ -493,7 +493,7 @@ const App = () => {
     setExtractionResults([]);
     setError(null);
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    const ai = new GoogleGenAI({ apiKey: 'AIzaSyCg1IGbfaPMXHuvutYxyx0K0Xe1YvnhDsE' });
     
     const results = await Promise.all(
         images.map(async (file, index) => {
