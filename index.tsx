@@ -283,6 +283,7 @@ const App = () => {
   const [currentView, setCurrentView] = useState<View>('home');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
   
   // 'Add' View States
   const [images, setImages] = useState<File[]>([]);
@@ -339,6 +340,17 @@ const App = () => {
   // --- Effects ---
   useOutsideAlerter(subjectSettingsRef, () => setIsSubjectSettingsOpen(false));
   useOutsideAlerter(lectureSettingsRef, () => setIsLectureSettingsOpen(false));
+
+  // Effect for sidebar responsiveness
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 1024) {
+        setIsSidebarOpen(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Effect for initial data loading
   useEffect(() => {
@@ -419,6 +431,25 @@ const App = () => {
   }, [subjects, pat, isDataLoading]);
 
   // --- Handlers ---
+  const handleNavigation = (view: View, subjectId?: string) => {
+    setCurrentView(view);
+    
+    if (view === 'library') {
+      if (subjectId) {
+        setSelectedManageSubjectId(subjectId);
+        setSelectedManageLectureId('');
+      } else {
+        if (!selectedManageSubjectId && subjects.length > 0) {
+          setSelectedManageSubjectId(subjects[0].id);
+        }
+        setSelectedManageLectureId('');
+      }
+    }
+
+    if (window.innerWidth <= 1024) {
+      setIsSidebarOpen(false);
+    }
+  };
 
   const handleImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -915,12 +946,12 @@ const App = () => {
             <h1 className="page-title">Welcome to Qsnap</h1>
             <p className="page-subtitle">Your smart tool for creating and managing study materials.</p>
             <div className="home-cards">
-              <div className="home-card" onClick={() => setCurrentView('add')}>
+              <div className="home-card" onClick={() => handleNavigation('add')}>
                 <i className="fa-solid fa-plus card-icon"></i>
                 <h2>Add New Questions</h2>
                 <p>Upload an image to extract multiple-choice questions using AI.</p>
               </div>
-              <div className="home-card" onClick={() => setCurrentView('library')}>
+              <div className="home-card" onClick={() => handleNavigation('library')}>
                 <i className="fa-solid fa-book card-icon"></i>
                 <h2>View Your Library</h2>
                 <p>Organize, edit, and export your saved questions by subject and lecture.</p>
@@ -1174,19 +1205,16 @@ const App = () => {
 
   return (
     <div className="app-layout">
-      <aside className="sidebar">
-        <h1 className="sidebar-title" onClick={() => setCurrentView('home')}>Qsnap</h1>
+       {isSidebarOpen && window.innerWidth <= 1024 && <div className="overlay" onClick={() => setIsSidebarOpen(false)}></div>}
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <h1 className="sidebar-title" onClick={() => handleNavigation('home')}>Qsnap</h1>
         <div className="sidebar-scrollable-content">
           <nav className="sidebar-nav">
-            <button className={`nav-item ${currentView === 'add' ? 'active' : ''}`} onClick={() => setCurrentView('add')}>
+            <button className={`nav-item ${currentView === 'add' ? 'active' : ''}`} onClick={() => handleNavigation('add')}>
               <i className="fa-solid fa-plus"></i>
               <span>Add Questions</span>
             </button>
-            <button className={`nav-item ${currentView === 'library' ? 'active' : ''}`} onClick={() => {
-                setCurrentView('library');
-                setSelectedManageSubjectId(subjects.length > 0 ? subjects[0].id : '');
-                setSelectedManageLectureId('');
-            }}>
+            <button className={`nav-item ${currentView === 'library' ? 'active' : ''}`} onClick={() => handleNavigation('library')}>
               <i className="fa-solid fa-book"></i>
               <span>Question Library</span>
             </button>
@@ -1200,11 +1228,7 @@ const App = () => {
                   <button 
                     key={subject.id}
                     className={`subject-item ${selectedManageSubjectId === subject.id && currentView === 'library' ? 'active' : ''}`}
-                    onClick={() => {
-                      setCurrentView('library');
-                      setSelectedManageSubjectId(subject.id);
-                      setSelectedManageLectureId(''); // Reset lecture selection
-                    }}
+                    onClick={() => handleNavigation('library', subject.id)}
                     title={subject.name}
                   >
                     <i className="fa-solid fa-folder"></i>
@@ -1230,6 +1254,9 @@ const App = () => {
         </div>
       </aside>
       <main className="main-content">
+        <button className="sidebar-toggle" onClick={() => setIsSidebarOpen(!isSidebarOpen)} aria-label="Toggle navigation menu">
+            <i className="fa-solid fa-bars"></i>
+        </button>
         {renderContent()}
       </main>
 
