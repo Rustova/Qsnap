@@ -336,6 +336,10 @@ const App = () => {
   const isInitialLoad = useRef(true);
   const debounceTimer = useRef<number | null>(null);
 
+  // Drag and Drop State
+  const [draggingLectureId, setDraggingLectureId] = useState<string | null>(null);
+  const [dragOverLectureId, setDragOverLectureId] = useState<string | null>(null);
+
 
   // --- Effects ---
   useOutsideAlerter(subjectSettingsRef, () => setIsSubjectSettingsOpen(false));
@@ -436,12 +440,13 @@ const App = () => {
     
     if (view === 'library') {
       if (subjectId) {
+        // When a specific subject is clicked in the sidebar
         setSelectedManageSubjectId(subjectId);
         setSelectedManageLectureId('');
       } else {
-        if (!selectedManageSubjectId && subjects.length > 0) {
-          setSelectedManageSubjectId(subjects[0].id);
-        }
+        // When the main 'Question Library' nav item is clicked,
+        // clear the selection to show the library home/placeholder.
+        setSelectedManageSubjectId('');
         setSelectedManageLectureId('');
       }
     }
@@ -746,6 +751,57 @@ const App = () => {
     navigator.clipboard.writeText(textToCopy);
     setCopiedId(question.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleExportClick = () => {
+    setIsPdfModalOpen(true);
+    // On smaller screens, close the sidebar when opening the modal
+    if (window.innerWidth <= 1024) {
+      setIsSidebarOpen(false);
+    }
+  };
+
+  // --- Drag and Drop Handlers ---
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, lectureId: string) => {
+    setDraggingLectureId(lectureId);
+    e.dataTransfer.setData('lectureId', lectureId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, lectureId: string) => {
+    e.preventDefault();
+    if (draggingLectureId && draggingLectureId !== lectureId) {
+      setDragOverLectureId(lectureId);
+    }
+  };
+  
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, subjectId: string, droppedOnLectureId: string) => {
+    e.preventDefault();
+    const draggedLectureId = e.dataTransfer.getData('lectureId');
+    if (!draggedLectureId || draggedLectureId === droppedOnLectureId) {
+      return;
+    }
+  
+    setSubjects(prevSubjects => {
+      const newSubjects = JSON.parse(JSON.stringify(prevSubjects)); // Deep copy
+      const subject = newSubjects.find((s: Subject) => s.id === subjectId);
+      if (!subject) return prevSubjects;
+  
+      const draggedIndex = subject.lectures.findIndex((l: Lecture) => l.id === draggedLectureId);
+      const targetIndex = subject.lectures.findIndex((l: Lecture) => l.id === droppedOnLectureId);
+  
+      if (draggedIndex === -1 || targetIndex === -1) return prevSubjects;
+  
+      const [draggedItem] = subject.lectures.splice(draggedIndex, 1);
+      subject.lectures.splice(targetIndex, 0, draggedItem);
+  
+      return newSubjects;
+    });
+  };
+
+  const handleDragEnd = () => {
+    setDraggingLectureId(null);
+    setDragOverLectureId(null);
   };
 
   const subjectOptions = useMemo(() =>
@@ -1189,9 +1245,23 @@ const App = () => {
                     </form>
                 </div>
                 {managedSubject.lectures.map(lecture => (
-                    <div key={lecture.id} className="lecture-card" onClick={() => setSelectedManageLectureId(lecture.id)}>
-                        <h3 className="lecture-card-title">{lecture.name}</h3>
-                        <p className="lecture-card-info">{lecture.questions.length} question{lecture.questions.length !== 1 ? 's' : ''}</p>
+                    <div 
+                      key={lecture.id} 
+                      className={`lecture-card ${draggingLectureId === lecture.id ? 'dragging' : ''} ${dragOverLectureId === lecture.id ? 'drag-over' : ''}`}
+                      draggable={true}
+                      onDragStart={(e) => handleDragStart(e, lecture.id)}
+                      onDragOver={(e) => handleDragOver(e, lecture.id)}
+                      onDrop={(e) => handleDrop(e, managedSubject.id, lecture.id)}
+                      onDragEnd={handleDragEnd}
+                      onDragLeave={() => setDragOverLectureId(null)}
+                    >
+                        <div className="drag-handle" onMouseDown={(e) => e.stopPropagation()}>
+                          <i className="fa-solid fa-sort"></i>
+                        </div>
+                        <div className="lecture-card-content" onClick={() => setSelectedManageLectureId(lecture.id)}>
+                            <h3 className="lecture-card-title">{lecture.name}</h3>
+                            <p className="lecture-card-info">{lecture.questions.length} question{lecture.questions.length !== 1 ? 's' : ''}</p>
+                        </div>
                     </div>
                 ))}
               </div>
@@ -1207,7 +1277,7 @@ const App = () => {
     <div className="app-layout">
        {isSidebarOpen && window.innerWidth <= 1024 && <div className="overlay" onClick={() => setIsSidebarOpen(false)}></div>}
       <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
-        <h1 className="sidebar-title" onClick={() => handleNavigation('home')}>Qsnap</h1>
+        <h1 className="sidebar-title" onClick={() => handleNavigation('home')}><i className="fa-solid fa-house"></i> Qsnap</h1>
         <div className="sidebar-scrollable-content">
           <nav className="sidebar-nav">
             <button className={`nav-item ${currentView === 'add' ? 'active' : ''}`} onClick={() => handleNavigation('add')}>
@@ -1248,7 +1318,7 @@ const App = () => {
               {saveStatus === 'saved' && !isInitialLoad.current && <><i className="fa-solid fa-check"></i> All changes saved</>}
               {saveStatus === 'error' && <><i className="fa-solid fa-circle-xmark"></i> Save Error</>}
           </div>
-          <button className="export-button" onClick={() => setIsPdfModalOpen(true)} disabled={subjects.length === 0}>
+          <button className="export-button" onClick={handleExportClick} disabled={subjects.length === 0}>
              <i className="fa-solid fa-file-pdf"></i> Export to PDF
           </button>
         </div>

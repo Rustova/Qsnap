@@ -40,17 +40,38 @@ body {
   color: var(--text-primary);
   margin: 0;
   overflow: hidden; /* Prevent body scroll */
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE10+/Edge */
+  user-select: none; /* Standard */
 }
+
+/* Re-enable text selection on specific elements for usability */
+input,
+textarea,
+.question-card,
+.lecture-card-content,
+.home-card p,
+.page-title,
+.page-subtitle,
+.simple-modal p,
+.modal-title {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
 
 #root {
   width: 100%;
-  height: 100vh;
+  height: 100dvh; /* Use dynamic viewport height to avoid overlap with browser UI */
 }
 
 /* --- App Layout --- */
 .app-layout {
   display: flex;
-  height: 100vh;
+  height: 100dvh; /* Use dynamic viewport height to avoid overlap with browser UI */
   width: 100vw;
   position: relative;
   overflow-x: hidden;
@@ -93,8 +114,11 @@ body {
   font-weight: 700;
   color: #fff;
   margin-bottom: 2rem;
-  text-align: center;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 .sidebar-scrollable-content {
@@ -751,6 +775,12 @@ button.delete-button:hover {
     max-width: 800px; /* Centered, wider cards */
 }
 .lecture-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.lecture-card-content {
+    flex-grow: 1;
     cursor: pointer;
 }
 .lecture-card:hover {
@@ -768,6 +798,27 @@ button.delete-button:hover {
     font-size: 0.9rem;
     color: var(--text-secondary);
 }
+
+/* Drag and Drop Styles */
+.drag-handle {
+    cursor: grab;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    padding: 0.5rem;
+    transition: color 0.2s;
+}
+.drag-handle:hover {
+    color: var(--text-primary);
+}
+.lecture-card.dragging {
+    opacity: 0.4;
+    border-style: dashed;
+}
+.lecture-card.drag-over {
+    /* Using an inset box-shadow avoids layout shifts that border-top would cause */
+    box-shadow: 0 3px 0 0 var(--primary-color) inset;
+}
+
 
 .add-lecture-card {
     border-style: dashed;
