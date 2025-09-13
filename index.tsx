@@ -65,16 +65,26 @@ const saveGithubFile = async (token: string, content: string, sha: string | null
 
 // --- TYPE DEFINITIONS ---
 interface MCQ {
+  type: 'mcq';
   id: string;
   question: string;
   options: string[];
   correctAnswer?: number;
 }
 
+interface ShortAnswerQuestion {
+  type: 'short_answer';
+  id: string;
+  question: string;
+  answer: string;
+}
+
+type Question = MCQ | ShortAnswerQuestion;
+
 interface Lecture {
   id: string;
   name: string;
-  questions: MCQ[];
+  questions: Question[];
 }
 
 interface Subject {
@@ -85,7 +95,7 @@ interface Subject {
 
 interface ExtractionResult {
   imageUrl: string;
-  questions: MCQ[];
+  questions: Question[];
   error?: string;
 }
 
@@ -167,29 +177,31 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ options, value, onChange, p
 
 // Question Card Props
 interface QuestionCardProps {
-  question: MCQ;
-  onCopy: (question: MCQ) => void;
+  question: Question;
+  onCopy: (question: Question) => void;
   copiedId: string | null;
   isStaged?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
   onSelectAnswer?: (optionIndex: number) => void;
-  onStartEdit?: (question: MCQ) => void;
+  onStartEdit?: (question: Question) => void;
   onSaveEdit?: () => void;
   onCancelEdit?: () => void;
   editingQuestionId?: string | null;
-  editedContent?: MCQ | null;
-  onEditInputChange?: (field: 'question' | 'option', value: string, optionIndex?: number) => void;
+  editedContent?: Question | null;
+  onEditInputChange?: (field: 'question' | 'option' | 'answer', value: string, optionIndex?: number) => void;
   onEditCorrectAnswerChange?: (optionIndex: number) => void;
   onDelete?: () => void;
 }
 
 const QuestionCard: React.FC<QuestionCardProps> = ({
-  question, onCopy, copiedId, isStaged = false, onSelectAnswer,
+  question, onCopy, copiedId, isStaged = false, isSelected, onToggleSelect, onSelectAnswer,
   onStartEdit, onSaveEdit, onCancelEdit, editingQuestionId, editedContent,
   onEditInputChange, onEditCorrectAnswerChange, onDelete
 }) => {
   const isEditing = editingQuestionId === question.id;
 
-  if (isEditing && editedContent && onEditInputChange && onEditCorrectAnswerChange && onCancelEdit && onSaveEdit) {
+  if (isEditing && editedContent && onEditInputChange && onCancelEdit && onSaveEdit) {
     return (
       <div className="question-card editing-view">
         <textarea
@@ -199,26 +211,41 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           aria-label="Edit question text"
           rows={4}
         />
-        <ul className="options-list">
-          {editedContent.options.map((opt, i) => (
-            <li key={i} className="option-item">
-              <input
-                type="radio"
-                id={`edit-opt-${editedContent.id}-${i}`}
-                name={`edit-correct-answer-${editedContent.id}`}
-                checked={editedContent.correctAnswer === i}
-                onChange={() => onEditCorrectAnswerChange(i)}
-              />
-              <input
-                type="text"
-                className="option-edit-input"
-                value={opt}
-                onChange={(e) => onEditInputChange('option', e.target.value, i)}
-                aria-label={`Edit option ${i + 1}`}
-              />
-            </li>
-          ))}
-        </ul>
+        {editedContent.type === 'mcq' && onEditCorrectAnswerChange && (
+          <ul className="options-list">
+            {editedContent.options.map((opt, i) => (
+              <li key={i} className="option-item">
+                <input
+                  type="radio"
+                  id={`edit-opt-${editedContent.id}-${i}`}
+                  name={`edit-correct-answer-${editedContent.id}`}
+                  checked={editedContent.correctAnswer === i}
+                  onChange={() => onEditCorrectAnswerChange(i)}
+                />
+                <input
+                  type="text"
+                  className="option-edit-input"
+                  value={opt}
+                  onChange={(e) => onEditInputChange('option', e.target.value, i)}
+                  aria-label={`Edit option ${i + 1}`}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+        {editedContent.type === 'short_answer' && (
+           <div className="short-answer-edit-container">
+             <label htmlFor={`edit-ans-${editedContent.id}`}>Answer</label>
+             <textarea
+                id={`edit-ans-${editedContent.id}`}
+                className="answer-edit-input"
+                value={editedContent.answer}
+                onChange={(e) => onEditInputChange('answer', e.target.value)}
+                aria-label="Edit answer text"
+                rows={5}
+             />
+          </div>
+        )}
         <div className="edit-actions">
           <button className="btn-secondary cancel-button" onClick={onCancelEdit}>
             <i className="fa-regular fa-circle-xmark"></i> Cancel
@@ -232,7 +259,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   }
 
   return (
-    <div className="question-card">
+    <div className={`question-card ${isStaged ? 'staged' : ''}`}>
+       {isStaged && onToggleSelect && (
+        <div className="card-selection">
+          <input
+            type="checkbox"
+            checked={!!isSelected}
+            onChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="Select question"
+          />
+        </div>
+      )}
       <div className="card-actions">
         {!isStaged && onStartEdit && (
           <button className="icon-button" onClick={() => onStartEdit(question)} title="Edit question">
@@ -249,29 +287,36 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </button>
       </div>
       <p className="question-text">{question.question}</p>
-      <ul className="options-list">
-        {question.options.map((opt, i) => (
-          <li key={i} className={`option-item ${!isStaged && question.correctAnswer === i ? 'correct-answer' : ''}`}>
-            {isStaged && onSelectAnswer ? (
-              <>
-                <input
-                  type="radio"
-                  id={`opt-${question.id}-${i}`}
-                  name={`correct-answer-${question.id}`}
-                  checked={question.correctAnswer === i}
-                  onChange={() => onSelectAnswer(i)}
-                />
-                <label htmlFor={`opt-${question.id}-${i}`}>{opt}</label>
-              </>
-            ) : (
-              <>
-                {!isStaged && question.correctAnswer === i && <i className="fa-solid fa-check" style={{ color: 'var(--correct-answer-text)' }}></i>}
-                <span>{opt}</span>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+      {question.type === 'mcq' ? (
+        <ul className="options-list">
+          {question.options.map((opt, i) => (
+            <li key={i} className={`option-item ${!isStaged && question.correctAnswer === i ? 'correct-answer' : ''}`}>
+              {isStaged && onSelectAnswer ? (
+                <>
+                  <input
+                    type="radio"
+                    id={`opt-${question.id}-${i}`}
+                    name={`correct-answer-${question.id}`}
+                    checked={question.correctAnswer === i}
+                    onChange={() => onSelectAnswer(i)}
+                  />
+                  <label htmlFor={`opt-${question.id}-${i}`}>{opt}</label>
+                </>
+              ) : (
+                <>
+                  {!isStaged && question.correctAnswer === i && <i className="fa-solid fa-check" style={{ color: 'var(--correct-answer-text)' }}></i>}
+                  <span>{opt}</span>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="short-answer-container">
+            <h4 className="short-answer-title">Answer</h4>
+            <p className="short-answer-text">{question.answer || <em>No answer provided.</em>}</p>
+        </div>
+      )}
     </div>
   );
 };
@@ -290,6 +335,7 @@ const App = () => {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [extractionResults, setExtractionResults] = useState<ExtractionResult[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedStagedIds, setSelectedStagedIds] = useState<Set<string>>(new Set());
   
   // Data & Library States
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -312,7 +358,7 @@ const App = () => {
   
   // Editing States
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
-  const [editedContent, setEditedContent] = useState<MCQ | null>(null);
+  const [editedContent, setEditedContent] = useState<Question | null>(null);
   const [editingLecture, setEditingLecture] = useState<{id: string, name: string, subjectId: string} | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   
@@ -361,6 +407,22 @@ const App = () => {
     const loadData = async () => {
         setIsDataLoading(true);
         setError(null);
+        let localDataLoaded = false;
+        try {
+            const localData = localStorage.getItem('qsnap_subjects');
+            if (localData) {
+                const parsedData = JSON.parse(localData);
+                if (Array.isArray(parsedData)) {
+                    setSubjects(parsedData);
+                    localDataLoaded = true;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load or parse local data", e);
+            localStorage.removeItem('qsnap_subjects');
+            localStorage.removeItem('qsnap_sha');
+        }
+
         try {
             const patResponse = await fetch(PAT_SCRIPT_URL);
             if (!patResponse.ok) throw new Error('Failed to fetch authentication token.');
@@ -370,30 +432,43 @@ const App = () => {
             setPat(fetchedPat);
 
             const fileData = await getGithubFile(fetchedPat);
-            if (fileData && fileData.content) {
-                const decodedContent = atob(fileData.content);
-                const parsedData = JSON.parse(decodedContent);
-                // Ensure the loaded data is an array before setting state to prevent crashes.
-                if (Array.isArray(parsedData)) {
-                    setSubjects(parsedData);
-                } else {
-                    console.error("Loaded data is not in the expected array format:", parsedData);
-                    throw new Error("The data file on GitHub is not formatted correctly. Expected an array of subjects.");
+            const localSha = localStorage.getItem('qsnap_sha');
+
+            if (fileData) { // File exists on GitHub
+                if (fileData.sha !== localSha) { // It's different from local, or localSha is null
+                    const decodedContent = atob(fileData.content);
+                    const parsedData = JSON.parse(decodedContent);
+                    if (Array.isArray(parsedData)) {
+                        setSubjects(parsedData);
+                        localStorage.setItem('qsnap_subjects', JSON.stringify(parsedData));
+                        localStorage.setItem('qsnap_sha', fileData.sha);
+                    } else {
+                        throw new Error("Remote data is not a valid array.");
+                    }
                 }
-            } else {
-                setSubjects([]);
+            } else { // File does not exist on GitHub
+                if (localDataLoaded) { // But we have local data, so we should clear it
+                    setSubjects([]);
+                    localStorage.removeItem('qsnap_subjects');
+                    localStorage.removeItem('qsnap_sha');
+                }
             }
         } catch (err: any) {
-            setError(`Failed to load library: ${err.message}. You can still use the app, but data will not be saved.`);
-            console.error(err);
-            setSubjects([]);
+            if (!localDataLoaded) { // Only show error if we couldn't even load cached data
+                setError(`Failed to load library: ${err.message}. You can still use the app, but data will not be saved.`);
+                console.error(err);
+                setSubjects([]);
+            } else {
+                console.warn("Could not sync with remote, using cached data.", err);
+            }
         } finally {
             setIsDataLoading(false);
             setTimeout(() => { isInitialLoad.current = false; }, 500);
         }
     };
     loadData();
-  }, []);
+}, []);
+
 
   // Effect for saving data with debouncing
   useEffect(() => {
@@ -418,7 +493,11 @@ const App = () => {
                return;
             }
 
-            await saveGithubFile(pat, encodedContent, fileData?.sha || null);
+            const newFileData = await saveGithubFile(pat, encodedContent, fileData?.sha || null);
+            localStorage.setItem('qsnap_subjects', contentToSave);
+            if (newFileData?.content?.sha) {
+                localStorage.setItem('qsnap_sha', newFileData.content.sha);
+            }
             setSaveStatus('saved');
         } catch (err) {
             console.error("Failed to save data:", err);
@@ -465,6 +544,7 @@ const App = () => {
       const urls = files.map(file => URL.createObjectURL(file));
       setImageUrls(urls);
       setExtractionResults([]);
+      setSelectedStagedIds(new Set());
       setError(null);
     }
   };
@@ -474,6 +554,7 @@ const App = () => {
     imageUrls.forEach(url => URL.revokeObjectURL(url));
     setImageUrls([]);
     setExtractionResults([]);
+    setSelectedStagedIds(new Set());
     setError(null);
   };
 
@@ -496,41 +577,52 @@ const App = () => {
 
     setIsLoading(true);
     setExtractionResults([]);
+    setSelectedStagedIds(new Set());
     setError(null);
 
-    const ai = new GoogleGenAI({ apiKey: 'AIzaSyCg1IGbfaPMXHuvutYxyx0K0Xe1YvnhDsE' });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const results = await Promise.all(
         images.map(async (file, index) => {
             try {
                 const imagePart = await fileToGenerativePart(file);
+                const prompt = 'Carefully analyze the image and extract all questions. For each question, determine its type: "mcq" for multiple-choice questions, or "short_answer" for open-ended questions like short answer, fill-in-the-blank, or essay questions. For "mcq" questions, extract the question text and all options. For "short_answer" questions, extract the question text and the corresponding ideal answer if it\'s provided in the image; if no answer is present, leave the answer field as an empty string. IMPORTANT: For MCQ options, strip any leading labels like "A.", "B)", or "1.". Respond with a JSON array based on the provided schema.';
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
                     contents: {
                         parts: [
                             imagePart,
-                            { text: 'Extract all multiple-choice questions from this image. For each question, provide the question text and a list of all options. Important: Do not include the leading letters or numbers (e.g., "a.", "b)", "1.") in the text for each option. Respond in JSON format.' },
+                            { text: prompt },
                         ],
                     },
                     config: {
                         responseMimeType: 'application/json',
+                        thinkingConfig: { thinkingBudget: 0 },
                         responseSchema: {
                             type: Type.ARRAY,
                             items: {
                                 type: Type.OBJECT,
                                 properties: {
+                                    type: {
+                                        type: Type.STRING,
+                                        description: 'The type of question. Must be "mcq" for multiple-choice or "short_answer" for open-ended/essay questions.',
+                                    },
                                     question: {
                                         type: Type.STRING,
-                                        description: 'The text of the multiple-choice question.',
+                                        description: 'The text of the question.',
                                     },
                                     options: {
                                         type: Type.ARRAY,
                                         items: { type: Type.STRING },
-                                        description: 'A list of possible answers for the question. The text for each option should not include any leading markers like "a.", "b)", etc.',
+                                        description: 'For "mcq" type: A list of possible answers. Leading labels (e.g., "A.", "1)") should be removed.',
+                                    },
+                                    answer: {
+                                        type: Type.STRING,
+                                        description: 'For "short_answer" type: The ideal answer text. Should be an empty string if no answer is provided in the source.',
                                     },
                                 },
-                                required: ['question', 'options'],
+                                required: ['type', 'question'],
                             },
                         },
                     },
@@ -538,15 +630,30 @@ const App = () => {
 
                 const parsedResponse = JSON.parse(response.text);
                 if (Array.isArray(parsedResponse)) {
-                    const questionsWithIds: MCQ[] = parsedResponse.map((q: Omit<MCQ, 'id'>, qIndex: number) => ({
-                        ...q,
-                        options: q.options.map(opt => opt.replace(/^\s*[a-zA-Z0-9]+[.)]\s*/, '').trim()),
-                        id: `ext-${Date.now()}-${index}-${qIndex}`,
-                        correctAnswer: undefined,
-                    }));
+                    // FIX: Added explicit 'Question | null' return type to the map callback to guide TypeScript's type inference.
+                    // This prevents widening of the 'type' property from a literal (e.g., 'mcq') to 'string', resolving
+                    // type compatibility issues with the 'Question' discriminated union and the subsequent type guard in filter().
+                    const questionsWithIds: Question[] = parsedResponse.map((q: any, qIndex: number): Question | null => {
+                        if (q.type === 'mcq') {
+                            return {
+                                type: 'mcq',
+                                question: q.question || '',
+                                options: (Array.isArray(q.options) ? q.options : []).map((opt: any) => String(opt ?? '').replace(/^\s*[a-zA-Z0-9]+[.)]\s*/, '').trim()),
+                                id: `ext-${Date.now()}-${index}-${qIndex}`,
+                                correctAnswer: undefined,
+                            };
+                        } else if (q.type === 'short_answer') {
+                            return {
+                                type: 'short_answer',
+                                question: q.question || '',
+                                answer: q.answer || '',
+                                id: `ext-${Date.now()}-${index}-${qIndex}`,
+                            };
+                        }
+                        return null;
+                    }).filter((q): q is Question => q !== null);
                     return { imageUrl: imageUrls[index], questions: questionsWithIds };
                 }
-                // Handle cases where response is not an array (e.g., empty object)
                 return { imageUrl: imageUrls[index], questions: [] };
 
             } catch (err) {
@@ -564,16 +671,41 @@ const App = () => {
     setExtractionResults(prevResults =>
       prevResults.map(result => ({
         ...result,
-        questions: result.questions.map(q => (q.id === questionId ? { ...q, correctAnswer: optionIndex } : q))
+        questions: result.questions.map(q => (q.id === questionId && q.type === 'mcq' ? { ...q, correctAnswer: optionIndex } : q))
       }))
     );
   };
+  
+  const handleToggleStagedQuestion = (questionId: string) => {
+    setSelectedStagedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(questionId)) {
+        newSet.delete(questionId);
+      } else {
+        newSet.add(questionId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllStaged = () => {
+    const allIds = extractionResults.flatMap(r => r.questions.map(q => q.id));
+    setSelectedStagedIds(new Set(allIds));
+  };
+
+  const handleDeselectAllStaged = () => {
+    setSelectedStagedIds(new Set());
+  };
 
   const handleAddQuestionsToLecture = () => {
-    const allQuestions = extractionResults.flatMap(result => result.questions);
-    if (!selectedSubjectId || !selectedLectureId || allQuestions.length === 0) {
+    const questionsToAdd = extractionResults
+      .flatMap(result => result.questions)
+      .filter(q => selectedStagedIds.has(q.id));
+
+    if (!selectedSubjectId || !selectedLectureId || questionsToAdd.length === 0) {
       return;
     }
+
     setSubjects(prevSubjects =>
       prevSubjects.map(subject => {
         if (subject.id !== selectedSubjectId) return subject;
@@ -581,15 +713,20 @@ const App = () => {
           ...subject,
           lectures: subject.lectures.map(lecture => {
             if (lecture.id !== selectedLectureId) return lecture;
-            const newQuestions = allQuestions.map(q => ({ ...q, id: `lib-${Date.now()}-${Math.random()}` }));
+            const newQuestions = questionsToAdd.map(q => ({ ...q, id: `lib-${Date.now()}-${Math.random()}` }));
             return { ...lecture, questions: [...lecture.questions, ...newQuestions] };
           }),
         };
       })
     );
-    setExtractionResults([]);
-    setImages([]);
-    setImageUrls([]);
+
+    setExtractionResults(prevResults => 
+        prevResults.map(result => ({
+            ...result,
+            questions: result.questions.filter(q => !selectedStagedIds.has(q.id))
+        })).filter(result => result.questions.length > 0 || result.error)
+    );
+    setSelectedStagedIds(new Set());
   };
 
   const handleAddSubject = (e: React.FormEvent) => {
@@ -706,7 +843,7 @@ const App = () => {
     }
   };
 
-  const handleStartEditQuestion = (question: MCQ) => {
+  const handleStartEditQuestion = (question: Question) => {
     setEditingQuestionId(question.id);
     setEditedContent({ ...question });
   };
@@ -729,25 +866,32 @@ const App = () => {
     setEditedContent(null);
   };
   
-  const handleEditInputChange = (field: 'question' | 'option', value: string, optionIndex?: number) => {
+  const handleEditInputChange = (field: 'question' | 'option' | 'answer', value: string, optionIndex?: number) => {
     if (!editedContent) return;
     if (field === 'question') {
       setEditedContent({ ...editedContent, question: value });
-    } else if (field === 'option' && optionIndex !== undefined) {
+    } else if (editedContent.type === 'mcq' && field === 'option' && optionIndex !== undefined) {
       const newOptions = [...editedContent.options];
       newOptions[optionIndex] = value;
       setEditedContent({ ...editedContent, options: newOptions });
+    } else if (editedContent.type === 'short_answer' && field === 'answer') {
+      setEditedContent({ ...editedContent, answer: value });
     }
   };
   
   const handleEditCorrectAnswerChange = (optionIndex: number) => {
-    if (editedContent) {
+    if (editedContent && editedContent.type === 'mcq') {
       setEditedContent({ ...editedContent, correctAnswer: optionIndex });
     }
   };
 
-  const handleCopy = (question: MCQ) => {
-    const textToCopy = `Question: ${question.question}\n\nOptions:\n${question.options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')}`;
+  const handleCopy = (question: Question) => {
+    let textToCopy = `Question: ${question.question}\n\n`;
+    if (question.type === 'mcq') {
+      textToCopy += `Options:\n${question.options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')}`;
+    } else {
+      textToCopy += `Answer:\n${question.answer}`;
+    }
     navigator.clipboard.writeText(textToCopy);
     setCopiedId(question.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -899,12 +1043,19 @@ const App = () => {
             lecture.questions.forEach((q, qIndex) => {
                 y = addWrappedText(`${qIndex + 1}. ${q.question}`, margin, y, { fontSize: questionFontSize }) + 5;
                 
-                q.options.forEach((opt, oIndex) => {
-                    const isCorrect = pdfShowAnswers && q.correctAnswer === oIndex;
-                    const prefix = `${String.fromCharCode(97 + oIndex)}) `;
-                    const textToRender = `${prefix}${opt}`;
-                    y = addWrappedText(textToRender, margin + 5, y, { fontSize: questionFontSize, fontStyle: isCorrect ? 'bold' : 'normal', highlight: isCorrect }) + 2;
-                });
+                if (q.type === 'mcq') {
+                  q.options.forEach((opt, oIndex) => {
+                      const isCorrect = pdfShowAnswers && q.correctAnswer === oIndex;
+                      const prefix = `${String.fromCharCode(97 + oIndex)}) `;
+                      const textToRender = `${prefix}${opt}`;
+                      y = addWrappedText(textToRender, margin + 5, y, { fontSize: questionFontSize, fontStyle: isCorrect ? 'bold' : 'normal', highlight: isCorrect }) + 2;
+                  });
+                } else { // short_answer
+                  if (pdfShowAnswers && q.answer) {
+                    const textToRender = `Answer: ${q.answer}`;
+                    y = addWrappedText(textToRender, margin + 5, y, { fontSize: questionFontSize, fontStyle: 'normal', highlight: true }) + 2;
+                  }
+                }
                 y += 8;
             });
         });
@@ -980,9 +1131,11 @@ const App = () => {
   };
   
   const hasStagedQuestions = useMemo(() => extractionResults.some(r => r.questions.length > 0), [extractionResults]);
+  const totalStagedQuestions = useMemo(() => extractionResults.reduce((acc, r) => acc + r.questions.length, 0), [extractionResults]);
+
 
   const renderContent = () => {
-    if (isDataLoading) {
+    if (isDataLoading && isInitialLoad.current) {
       return (
           <div className="loading-overlay">
               <i className="fa-solid fa-spinner fa-spin"></i>
@@ -1056,35 +1209,44 @@ const App = () => {
                 <h2 className="title-small">Step 2: Review & Assign</h2>
                 <div className="output-content">
                   {!isLoading && extractionResults.length > 0 && (
-                      <div className="extraction-results-container">
-                          {extractionResults.map((result, index) => (
-                              <div key={index} className="extraction-result-item">
-                                  <h3 className="image-result-title">Results for Image {index + 1}</h3>
-                                  <div className="image-preview large">
-                                      <img src={result.imageUrl} alt={`Analyzed ${index + 1}`} />
-                                  </div>
-                                  {result.error && <div className="message error">{result.error}</div>}
-                                  {result.questions.length > 0 ? (
-                                      <ul className="results-list">
-                                          {result.questions.map(q => (
-                                              <li key={q.id}>
-                                                  <QuestionCard
-                                                      question={q}
-                                                      onCopy={handleCopy}
-                                                      copiedId={copiedId}
-                                                      isStaged={true}
-                                                      onSelectAnswer={(optIndex) => handleSelectStagedAnswer(q.id, optIndex)}
-                                                  />
-                                              </li>
-                                          ))}
-                                      </ul>
-                                  ) : (!result.error && <div className="message-small">No questions found in this image.</div>)}
-                              </div>
-                          ))}
-                      </div>
+                      <>
+                        <div className="staging-actions">
+                          <span>{selectedStagedIds.size} of {totalStagedQuestions} selected</span>
+                          <button className="btn-secondary" onClick={handleSelectAllStaged} disabled={totalStagedQuestions === 0}>Select All</button>
+                          <button className="btn-secondary" onClick={handleDeselectAllStaged} disabled={selectedStagedIds.size === 0}>Deselect All</button>
+                        </div>
+                        <div className="extraction-results-container">
+                            {extractionResults.map((result, index) => (
+                                <div key={index} className="extraction-result-item">
+                                    <h3 className="image-result-title">Results for Image {index + 1}</h3>
+                                    <div className="image-preview large">
+                                        <img src={result.imageUrl} alt={`Analyzed ${index + 1}`} />
+                                    </div>
+                                    {result.error && <div className="message error">{result.error}</div>}
+                                    {result.questions.length > 0 ? (
+                                        <ul className="results-list">
+                                            {result.questions.map(q => (
+                                                <li key={q.id}>
+                                                    <QuestionCard
+                                                        question={q}
+                                                        onCopy={handleCopy}
+                                                        copiedId={copiedId}
+                                                        isStaged={true}
+                                                        isSelected={selectedStagedIds.has(q.id)}
+                                                        onToggleSelect={() => handleToggleStagedQuestion(q.id)}
+                                                        onSelectAnswer={(optIndex) => handleSelectStagedAnswer(q.id, optIndex)}
+                                                    />
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (!result.error && <div className="message-small">No questions found in this image.</div>)}
+                                </div>
+                            ))}
+                        </div>
+                      </>
                   )}
                   {!isLoading && extractionResults.length === 0 && images.length > 0 && (
-                    <div className="message">Analysis complete.</div>
+                    <div className="message">Analysis complete. Click "Extract Questions" again if needed.</div>
                   )}
                   {!isLoading && extractionResults.length === 0 && images.length === 0 && (
                     <div className="message">Upload one or more images to start extracting questions.</div>
@@ -1112,10 +1274,10 @@ const App = () => {
                     />
                     <button 
                       onClick={handleAddQuestionsToLecture} 
-                      disabled={!selectedSubjectId || !selectedLectureId || !hasStagedQuestions}
-                      title="Add Questions to Selected Lecture"
+                      disabled={!selectedSubjectId || !selectedLectureId || selectedStagedIds.size === 0}
+                      title="Add Selected Questions to Lecture"
                     >
-                      <i className="fa-solid fa-plus"></i> Add
+                      <i className="fa-solid fa-plus"></i> Add Selected
                     </button>
                   </div>
                 )}

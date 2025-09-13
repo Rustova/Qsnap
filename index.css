@@ -551,6 +551,27 @@ button.delete-button:hover {
 
 /* --- Staging/Results Area --- */
 .output-content { padding-top: 1rem; }
+
+.staging-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--content-background);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+.staging-actions span {
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-right: auto;
+}
+.staging-actions .btn-secondary {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
 .assign-section {
   background: var(--card-background);
   border: 1px solid var(--border-color);
@@ -604,6 +625,24 @@ button.delete-button:hover {
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.2), 0 1px 2px -1px rgb(0 0 0 / 0.2);
 }
 
+.question-card.staged {
+  padding-left: 3.5rem; /* Space for the checkbox */
+}
+
+.card-selection {
+  position: absolute;
+  top: 50%;
+  left: 1.25rem;
+  transform: translateY(-50%);
+  z-index: 5;
+}
+.card-selection input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
 .card-actions {
   position: absolute;
   top: 0.75rem;
@@ -632,6 +671,28 @@ button.delete-button:hover {
 .delete-question-button:hover {
     background-color: var(--error-bg-subtle);
     color: var(--error-color);
+}
+
+/* Short Answer Display */
+.short-answer-container {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--input-background);
+  border-radius: 8px;
+  border-left: 3px solid var(--primary-color);
+}
+
+.short-answer-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.short-answer-text {
+  color: var(--text-primary);
+  white-space: pre-wrap; /* To respect newlines in the answer */
 }
 
 
@@ -853,6 +914,21 @@ textarea.question-edit-input {
 .edit-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
 .save-button { background-color: #38a169; }
 .save-button:hover { background-color: #2f855a; }
+
+/* Short Answer Edit View */
+.short-answer-edit-container {
+    margin-top: 1rem;
+}
+.short-answer-edit-container label {
+    display: block;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+.answer-edit-input {
+    min-height: 100px;
+    resize: vertical;
+}
 
 
 /* --- Custom Select --- */
