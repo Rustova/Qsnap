@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
 import jsPDF from 'jspdf';
 
+// --- API KEY CONFIG ---
+// NOTE: Storing API keys directly in the code is not recommended for production environments.
+// For deployment, it's best to use a build process to inject this from a secure environment variable.
+const GEMINI_API_KEY = "AIzaSyCg1IGbfaPMXHuvutYxyx0K0Xe1YvnhDsE";
+
 // --- GITHUB & DATA PERSISTENCE CONFIG ---
 // IMPORTANT: Replace with your GitHub username and repository details.
 const GITHUB_OWNER = 'Rustova'; 
@@ -377,7 +382,7 @@ const App = () => {
 
   // Data Persistence States
   const [pat, setPat] = useState<string | null>(null);
-  const [isDataLoading, setIsDataLoading] = useState<boolean>(true);
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const isInitialLoad = useRef(true);
   const debounceTimer = useRef<number | null>(null);
@@ -402,27 +407,30 @@ const App = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Effect for initial data loading
+  // Effect for initial data loading and background sync
   useEffect(() => {
-    const loadData = async () => {
-        setIsDataLoading(true);
-        setError(null);
-        let localDataLoaded = false;
-        try {
-            const localData = localStorage.getItem('qsnap_subjects');
-            if (localData) {
-                const parsedData = JSON.parse(localData);
-                if (Array.isArray(parsedData)) {
-                    setSubjects(parsedData);
-                    localDataLoaded = true;
-                }
+    let localDataLoaded = false;
+    try {
+        const localData = localStorage.getItem('qsnap_subjects');
+        if (localData) {
+            const parsedData = JSON.parse(localData);
+            if (Array.isArray(parsedData)) {
+                setSubjects(parsedData);
+                localDataLoaded = true;
             }
-        } catch (e) {
-            console.error("Failed to load or parse local data", e);
-            localStorage.removeItem('qsnap_subjects');
-            localStorage.removeItem('qsnap_sha');
         }
+    } catch (e) {
+        console.error("Failed to load or parse local data", e);
+        localStorage.removeItem('qsnap_subjects');
+        localStorage.removeItem('qsnap_sha');
+    }
 
+    if (!localDataLoaded) {
+        setIsDataLoading(true);
+    }
+
+    const syncWithRemote = async () => {
+        setError(null);
         try {
             const patResponse = await fetch(PAT_SCRIPT_URL);
             if (!patResponse.ok) throw new Error('Failed to fetch authentication token.');
@@ -434,8 +442,9 @@ const App = () => {
             const fileData = await getGithubFile(fetchedPat);
             const localSha = localStorage.getItem('qsnap_sha');
 
-            if (fileData) { // File exists on GitHub
-                if (fileData.sha !== localSha) { // It's different from local, or localSha is null
+            if (fileData) {
+                if (fileData.sha !== localSha) {
+                    console.log("Remote data has changed. Syncing...");
                     const decodedContent = atob(fileData.content);
                     const parsedData = JSON.parse(decodedContent);
                     if (Array.isArray(parsedData)) {
@@ -446,15 +455,16 @@ const App = () => {
                         throw new Error("Remote data is not a valid array.");
                     }
                 }
-            } else { // File does not exist on GitHub
-                if (localDataLoaded) { // But we have local data, so we should clear it
+            } else {
+                if (localDataLoaded) {
+                    console.log("Remote file not found. Clearing local cache.");
                     setSubjects([]);
                     localStorage.removeItem('qsnap_subjects');
                     localStorage.removeItem('qsnap_sha');
                 }
             }
         } catch (err: any) {
-            if (!localDataLoaded) { // Only show error if we couldn't even load cached data
+            if (!localDataLoaded) {
                 setError(`Failed to load library: ${err.message}. You can still use the app, but data will not be saved.`);
                 console.error(err);
                 setSubjects([]);
@@ -466,8 +476,9 @@ const App = () => {
             setTimeout(() => { isInitialLoad.current = false; }, 500);
         }
     };
-    loadData();
-}, []);
+
+    syncWithRemote();
+  }, []);
 
 
   // Effect for saving data with debouncing
@@ -580,13 +591,13 @@ const App = () => {
     setSelectedStagedIds(new Set());
     setError(null);
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     
     const results = await Promise.all(
         images.map(async (file, index) => {
             try {
                 const imagePart = await fileToGenerativePart(file);
-                const prompt = 'Carefully analyze the image and extract all questions. For each question, determine its type: "mcq" for multiple-choice questions, or "short_answer" for open-ended questions like short answer, fill-in-the-blank, or essay questions. For "mcq" questions, extract the question text and all options. For "short_answer" questions, extract the question text and the corresponding ideal answer if it\'s provided in the image; if no answer is present, leave the answer field as an empty string. IMPORTANT: For MCQ options, strip any leading labels like "A.", "B)", or "1.". Respond with a JSON array based on the provided schema.';
+                const prompt = 'Carefully analyze the image and extract all questions. Only extract text that is clearly visible in the image. Do not complete or guess any words or sentences that are cut off or obscured. If a question is incomplete, extract only the visible part. For each question, determine its type: "mcq" for multiple-choice questions, or "short_answer" for open-ended questions like short answer, fill-in-the-blank, or essay questions. For "mcq" questions, extract the question text and all options. For "short_answer" questions, extract the question text and the corresponding ideal answer if it\'s provided in the image; if no answer is present, leave the answer field as an empty string. IMPORTANT: For MCQ options, strip any leading labels like "A.", "B)", or "1.". Respond with a JSON array based on the provided schema.';
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
@@ -630,9 +641,6 @@ const App = () => {
 
                 const parsedResponse = JSON.parse(response.text);
                 if (Array.isArray(parsedResponse)) {
-                    // FIX: Added explicit 'Question | null' return type to the map callback to guide TypeScript's type inference.
-                    // This prevents widening of the 'type' property from a literal (e.g., 'mcq') to 'string', resolving
-                    // type compatibility issues with the 'Question' discriminated union and the subsequent type guard in filter().
                     const questionsWithIds: Question[] = parsedResponse.map((q: any, qIndex: number): Question | null => {
                         if (q.type === 'mcq') {
                             return {
@@ -1135,7 +1143,7 @@ const App = () => {
 
 
   const renderContent = () => {
-    if (isDataLoading && isInitialLoad.current) {
+    if (isDataLoading) {
       return (
           <div className="loading-overlay">
               <i className="fa-solid fa-spinner fa-spin"></i>
@@ -1200,7 +1208,7 @@ const App = () => {
                 {images.length > 0 && (
                   <div className="analyze-button-container">
                       <button className="analyze-button" onClick={analyzeImages} disabled={isLoading} title="Extract Questions">
-                          {isLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
+                          {isLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-bolt"></i>}
                       </button>
                   </div>
                 )}
